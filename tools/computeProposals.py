@@ -1,3 +1,4 @@
+#coding=gbk
 import argparse
 import models
 import numpy as np
@@ -53,7 +54,8 @@ def main():
     h, w = im.shape[:2]
     img = np.expand_dims(np.transpose(im, (2, 0, 1)), axis=0).astype(np.float32)
     img = torch.from_numpy(img / 255.).to(device)
-    infer.forward(img)
+    
+    .forward(img)
     masks, scores = infer.getTopProps(.2, h, w)
     toc = time.time() - tic
     print('| done in %05.3f s' % toc)
@@ -63,7 +65,11 @@ def main():
         res[:, :, 2] = masks[:, :, i] * 255 + (1 - masks[:, :, i]) * res[:, :, 2]
 
         mask = masks[:, :, i].astype(np.uint8)
-        _, contours, _ = cv2.findContours(mask.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)
+        #cv2版本判断
+        if cv2.__version__[-5]=='4':
+            contours, _= cv2.findContours(mask.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+        else:
+            _, contours, _ = cv2.findContours(mask.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
         cnt_area = [cv2.contourArea(cnt) for cnt in contours]
         cnt_max_id = np.argmax(cnt_area)
         contour = contours[cnt_max_id]
@@ -80,6 +86,29 @@ def main():
         cv2.imshow('Proposal', res)
         cv2.waitKey(0)
 
+"""
+mask:分割后的二值图像
+"""
+def func(mask):
+    #旋转椭圆fitting
+    #在不改变当前结果的鲁棒性的前提下，采用旋转矩形框的方法可以很大提升算法在VOT库上的精度结果
+    
+    #cv2版本判断
+    if cv2.__version__[-5]=='4':
+      contours, _= cv2.findContours(mask.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    else:
+      _, contours, _ = cv2.findContours(mask.copy(),cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_NONE)
+    #找出轮廓面积最大的多边形，然后使用cv2生成椭圆
+    cnt_area = [cv2.contourArea(cnt) for cnt in contours]
+    if len(cnt_area) != 0 and np.max(cnt_area) > 100:
+        cnt_max_id = np.argmax(cnt_area)
+        contour = contours[cnt_max_id]
+        polygon = contour.reshape(-1, 2)
+        #计算椭圆
+        ellipse = cv2.fitEllipse(polygon)
+        #最终得到比较合适的基于椭圆生成的bbox
+        new_ellipse = (ellipse[0],(0.9*ellipse[1][0],0.9*ellipse[1][1]),ellipse[-1])
+        ellipseBox = cv2.boxPoints(new_ellipse)
 
 if __name__ == '__main__':
     main()
